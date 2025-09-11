@@ -1,4 +1,3 @@
-// plugins/kick.js
 const { normalizeId, isBotAdmin } = require('../utils_admin');
 
 module.exports = async (sock, msg, text, sender) => {
