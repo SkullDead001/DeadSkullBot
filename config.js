@@ -1,4 +1,5 @@
 // Configuración centralizada para DeadSkull Bot
+const fs = require('fs');
 
 module.exports = {
     // ==========================================
@@ -45,9 +46,9 @@ module.exports = {
         onlyAdmins: true,
         welcomeMessage: true,
         
-        // Logs y debug - IMPORTANTE para tu index.js mejorado
-        debug: false, // ← Activa/desactiva logs de mensajes
-        logLevel: "warn" // ← Nivel de log para Baileys
+        // Logs y debug
+        debug: false,
+        logLevel: "warn" // error, warn, info, debug
     },
 
     // ==========================================
@@ -109,6 +110,13 @@ module.exports = {
     },
 
     // ==========================================
+    // APIS Y SERVICIOS EXTERNOS
+    // ==========================================
+    apis: {
+        telegraph: "https://telegra.ph/upload"
+    },
+
+    // ==========================================
     // RUTAS DE ARCHIVOS
     // ==========================================
     paths: {
@@ -123,57 +131,43 @@ module.exports = {
     // CONFIGURACIÓN DE BAILEYS (WHATSAPP)
     // ==========================================
     wa: {
-        printQRInTerminal: false, // ← Ya lo usa tu index.js
+        printQRInTerminal: false,
         syncFullHistory: false,
         linkPreviewImageThumbnailWidth: 192,
         generateHighQualityLinkPreview: true,
-        
-        // Opciones avanzadas de Baileys
         markOnlineOnConnect: true,
         emitOwnEvents: true,
-        defaultQueryTimeoutMs: 60000,
-        
-        // Opciones de conexión
-        connectTimeoutMs: 30000,
-        keepAliveIntervalMs: 15000
+        defaultQueryTimeoutMs: 60000
     }
 };
 
 // ==========================================
-// VALIDACIÓN DE CONFIGURACIÓN
+// FUNCIONES DE CONFIGURACIÓN
 // ==========================================
 
 /**
  * Valida la configuración al cargar
  */
 function validateConfig() {
-    // Validar prefix
-    if (!module.exports.bot.prefix || module.exports.bot.prefix.length > 2) {
-        console.warn("⚠️  Prefix inválido, usando '.' por defecto");
+    if (!module.exports.bot.prefix) {
+        console.warn("⚠️  No se configuró prefix, usando '.' por defecto");
         module.exports.bot.prefix = ".";
     }
     
-    // Validar cooldown
     if (module.exports.options.cooldown < 1000) {
         console.warn("⚠️  Cooldown muy bajo, estableciendo 5000ms mínimo");
         module.exports.options.cooldown = 5000;
     }
-    
-    // Validar rutas
+
+    // Validar y crear carpetas si no existen
     if (!fs.existsSync(module.exports.bot.sessionPath)) {
-        require('fs').mkdirSync(module.exports.bot.sessionPath, { recursive: true });
+        fs.mkdirSync(module.exports.bot.sessionPath, { recursive: true });
     }
     
     if (!fs.existsSync(module.exports.bot.tempPath)) {
-        require('fs').mkdirSync(module.exports.bot.tempPath, { recursive: true });
+        fs.mkdirSync(module.exports.bot.tempPath, { recursive: true });
     }
 }
 
 // Ejecutar validación al cargar
-if (typeof require !== 'undefined' && require.main === module) {
-    validateConfig();
-} else {
-    // Si se importa como módulo, validar también
-    const fs = require('fs');
-    validateConfig();
-}
+validateConfig();
