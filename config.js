@@ -18,7 +18,7 @@ module.exports = {
     // PROPIETARIO/DUEÑO DEL BOT
     // ==========================================
     owner: {
-        number: "5211234567890@s.whatsapp.net", // Reemplaza con tu número
+        number: "5211234567890@s.whatsapp.net",
         name: "DeadSkull"
     },
 
@@ -30,14 +30,14 @@ module.exports = {
         sticker: {
             packName: "DeadSkull Pack",
             author: "DeadSkull Bot",
-            maxVideoDuration: 7, // segundos
+            maxVideoDuration: 7,
             quality: 70,
             categories: ['🤩', '🎉']
         },
         
         // Tiempos y límites
-        cooldown: 10000, // 10 segundos entre comandos
-        maxFileSize: 50, // MB
+        cooldown: 10000,
+        maxFileSize: 50,
         readMessages: true,
         readStatus: false,
         
@@ -48,14 +48,13 @@ module.exports = {
         
         // Logs y debug
         debug: false,
-        logLevel: "warn" // error, warn, info, debug
+        logLevel: "warn"
     },
 
     // ==========================================
     // MENSAJES PERSONALIZABLES
     // ==========================================
     messages: {
-        // Errores y advertencias
         cooldown: "🕐 *ESPERA 10 SEGUNDOS* para usar otro comando",
         adminOnly: "⚠️ *SOLO ADMINISTRADORES* pueden usar este comando",
         botAdmin: "🤖 *NECESITO SER ADMINISTRADOR* para esta acción",
@@ -88,14 +87,12 @@ module.exports = {
     // CONFIGURACIÓN DE PLUGINS
     // ==========================================
     plugins: {
-        // Estado de plugins (true/false)
         sticker: true,
         kick: true,
         menu: true,
         ping: true,
         help: true,
         
-        // Configuraciones específicas por plugin
         stickerConfig: {
             useWebp: true,
             allowGifs: true,
@@ -145,9 +142,6 @@ module.exports = {
 // FUNCIONES DE CONFIGURACIÓN
 // ==========================================
 
-/**
- * Valida la configuración al cargar
- */
 function validateConfig() {
     if (!module.exports.bot.prefix) {
         console.warn("⚠️  No se configuró prefix, usando '.' por defecto");
@@ -159,7 +153,6 @@ function validateConfig() {
         module.exports.options.cooldown = 5000;
     }
 
-    // Validar y crear carpetas si no existen
     if (!fs.existsSync(module.exports.bot.sessionPath)) {
         fs.mkdirSync(module.exports.bot.sessionPath, { recursive: true });
     }
@@ -169,5 +162,4 @@ function validateConfig() {
     }
 }
 
-// Ejecutar validación al cargar
 validateConfig();
