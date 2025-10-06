@@ -146,4 +146,45 @@ module.exports = async (sock, msg, text, sender) => {
     // Actualizar último uso
     user.lastmiming = Date.now();
     userDB.set(sender, user);
+};            }
+        } else if (text.split(' ')[1]) {
+            if (!config.plugins.stickerConfig.allowUrls) {
+                return sock.sendMessage(sender, { 
+                    text: "❌ Los stickers desde URLs están desactivados"
+                });
+            }
+            
+            const url = text.split(' ')[1];
+            if (isUrl(url)) {
+                stiker = await sticker(false, url, f, g);
+            } else {
+                return sock.sendMessage(sender, { 
+                    text: config.messages.sticker.invalidUrl 
+                }, { quoted: msg });
+            }
+        } else {
+            return sock.sendMessage(sender, { 
+                text: config.messages.sticker.invalidMedia
+            }, { quoted: msg });
+        }
+    } catch (e) {
+        console.error(e);
+        if (!stiker) stiker = e;
+    } finally {
+        if (stiker && Buffer.isBuffer(stiker)) {
+            await sock.sendMessage(sender, {
+                sticker: stiker
+            }, { quoted: msg });
+            await sock.sendMessage(sender, { react: { text: "✅", key: msg.key } });
+        } else {
+            await sock.sendMessage(sender, { 
+                text: config.messages.sticker.error
+            }, { quoted: msg });
+            await sock.sendMessage(sender, { react: { text: "❌", key: msg.key } });
+        }
+    }
+    
+    // Actualizar último uso
+    user.lastmiming = Date.now();
+    userDB.set(sender, user);
 };
