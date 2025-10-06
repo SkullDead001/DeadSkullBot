@@ -6,11 +6,9 @@ const { isUrl } = require('../lib/utils.js');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const config = require('../config.js');
 
-// Base de datos simple en memoria
 const userDB = new Map();
 
 module.exports = async (sock, msg, text, sender) => {
-    // Verificar si el plugin está activado
     if (!config.plugins.sticker) return;
     
     const command = text.split(' ')[0];
@@ -22,12 +20,10 @@ module.exports = async (sock, msg, text, sender) => {
     
     if (!stickerCommands.includes(command)) return;
 
-    // Reacciona con reloj de arena al recibir el comando
     await sock.sendMessage(sender, { react: { text: "⏳", key: msg.key } });
 
     let stiker = false;
     
-    // Obtener datos del usuario
     const user = userDB.get(sender) || { 
         lastmiming: 0, 
         packname: config.options.sticker.packName, 
@@ -50,7 +46,6 @@ module.exports = async (sock, msg, text, sender) => {
         let q = msg;
         let mime = '';
         
-        // Detectar tipo de media
         if (msg.message?.imageMessage) mime = 'image';
         else if (msg.message?.videoMessage) mime = 'video';
         else if (msg.message?.stickerMessage) mime = 'webp';
@@ -143,48 +138,6 @@ module.exports = async (sock, msg, text, sender) => {
         }
     }
     
-    // Actualizar último uso
-    user.lastmiming = Date.now();
-    userDB.set(sender, user);
-};            }
-        } else if (text.split(' ')[1]) {
-            if (!config.plugins.stickerConfig.allowUrls) {
-                return sock.sendMessage(sender, { 
-                    text: "❌ Los stickers desde URLs están desactivados"
-                });
-            }
-            
-            const url = text.split(' ')[1];
-            if (isUrl(url)) {
-                stiker = await sticker(false, url, f, g);
-            } else {
-                return sock.sendMessage(sender, { 
-                    text: config.messages.sticker.invalidUrl 
-                }, { quoted: msg });
-            }
-        } else {
-            return sock.sendMessage(sender, { 
-                text: config.messages.sticker.invalidMedia
-            }, { quoted: msg });
-        }
-    } catch (e) {
-        console.error(e);
-        if (!stiker) stiker = e;
-    } finally {
-        if (stiker && Buffer.isBuffer(stiker)) {
-            await sock.sendMessage(sender, {
-                sticker: stiker
-            }, { quoted: msg });
-            await sock.sendMessage(sender, { react: { text: "✅", key: msg.key } });
-        } else {
-            await sock.sendMessage(sender, { 
-                text: config.messages.sticker.error
-            }, { quoted: msg });
-            await sock.sendMessage(sender, { react: { text: "❌", key: msg.key } });
-        }
-    }
-    
-    // Actualizar último uso
     user.lastmiming = Date.now();
     userDB.set(sender, user);
 };
