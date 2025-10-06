@@ -1,3 +1,4 @@
+const config = require('../config.js');
 module.exports = async (sock, msg, text, sender) => {
     if (text === '.p') {
         const start = Date.now(); // Tiempo inicial
