@@ -1,12 +1,12 @@
 {
-  "name": "deadskull-bot",
+  "name": "DeadSkull-bot",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp automatizado con múltiples funciones incluyendo stickers, administración y más.",
+  "description": "Bot de WhatsApp automatizado con múltiples funciones.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"No tests specified\" && exit 0"
+    "install-deps": "npm install"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.18",
@@ -16,7 +16,7 @@
     "pino": "^8.16.0",
     "qrcode-terminal": "^0.12.0",
     "sharp": "^0.32.6",
-    "wa-sticker-formatter": "^1.4.6"
+    "wa-sticker-formatter": "^4.3.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
@@ -34,14 +34,9 @@
     "whatsapp",
     "sticker",
     "baileys",
-    "deadskull",
-    "automation"
+    "deadskull"
   ],
   "engines": {
     "node": ">=16.0.0"
-  },
-  "homepage": "https://github.com/SkullDead001/DeadSkullBot#readme",
-  "bugs": {
-    "url": "https://github.com/SkullDead001/DeadSkullBot/issues"
   }
 }
