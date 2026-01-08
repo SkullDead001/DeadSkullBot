@@ -1,113 +1,149 @@
-// utils_admin.js
-// - Mapea el sender @lid al número real usando metadata.participants
-// - Compara siempre por número puro (solo dígitos)
-// - Funciones listas para usar desde tus plugins
+// utils_admin.js (robusto)
+// - Usa JIDs reales (@s.whatsapp.net / @g.us) para checks de admin
+// - Evita hacks de "solo dígitos" (eso rompe admins)
+// - Soporta @lid (best-effort) intentando resolver desde metadata.participants
+// - Incluye funciones compatibles con tus plugins: normalizeId, isAdmin, isBotAdmin, checkAdminAndReact
 
-/** Deja solo números (teléfono) */
+const config = require('./config.js');
 
-function digitsOnly(id) {
+/** Quita sufijo de dispositivo ":1" y normaliza a string */
+function stripDevice(jid) {
+  if (!jid) return '';
+  return String(jid).split(':')[0];
+}
+
+/**
+ * Normaliza un "id" a un JID comparable.
+ * - Si ya viene con @ (jid), lo devuelve sin sufijo :device
+ * - Si viene como número (solo dígitos), lo convierte a @s.whatsapp.net
+ */
+function normalizeId(id) {
   if (!id) return '';
-  let num = String(id).replace(/[^0-9]/g, '');
-  // 💡 Corrige IDs del bot con sufijo 1 (ej: 52144394696501 → 5214439469650)
-  if (num.length > 11 && num.endsWith('1')) num = num.slice(0, -1);
-  return num;
+  const s = stripDevice(String(id).trim());
+
+  // ya es jid
+  if (s.includes('@')) return s;
+
+  // parece número
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return s;
+
+  return `${digits}@s.whatsapp.net`;
 }
 
-/** Devuelve lista de números (string) de los admins del grupo */
-async function getGroupAdminNumbers(sock, groupId) {
+/** Obtiene metadata del grupo de forma segura */
+async function getGroupMetadataSafe(sock, groupId) {
   try {
-    const meta = await sock.groupMetadata(groupId);
-    const admins = meta.participants
-      .filter(p => p.admin === 'admin' || p.admin === 'superadmin')
-      .map(p => digitsOnly(p.jid || p.id || p.lid))
-      .filter(Boolean);
-
-    console.log(`📋 Admin numbers for ${groupId}:`, admins);
-    return admins;
+    return await sock.groupMetadata(groupId);
   } catch (e) {
-    console.error('❌ getGroupAdminNumbers error:', e);
-    return [];
+    console.error('❌ No pude obtener groupMetadata:', e?.message || e);
+    return null;
   }
 }
 
-/** Mapea cualquier id (jid/id/lid) al NÚMERO REAL usando la metadata */
-async function resolveNumberFromAnyId(sock, groupId, anyId) {
-  const n = digitsOnly(anyId);
-  if (!n) return '';
+/**
+ * Intenta resolver un sender @lid a su jid real @s.whatsapp.net usando participants.
+ * Nota: la estructura exacta puede variar por versión de Baileys, así que es best-effort.
+ */
+function resolveLidToJid(participants, maybeLidJid) {
+  const target = normalizeId(maybeLidJid);
+  if (!target.endsWith('@lid')) return target;
 
-  try {
-    const meta = await sock.groupMetadata(groupId);
-    // Si viene @lid, buscamos por lid
-    const byLid = meta.participants.find(p => digitsOnly(p.lid) === n);
-    if (byLid?.jid) return digitsOnly(byLid.jid);
+  const targetCore = stripDevice(target);
 
-    // Si ya viene jid o c.us, el digitsOnly ya lo dejó correcto
-    // Verificamos que exista en la lista de participantes (no obligatorio, pero ayuda)
-    const byJid = meta.participants.find(p => digitsOnly(p.jid || p.id) === n);
-    if (byJid) return digitsOnly(byJid.jid || byJid.id);
+  for (const p of participants || []) {
+    const pid = normalizeId(p?.id || p?.jid);
+    const plid = normalizeId(p?.lid);
 
-    // Si no se encontró mapeo, devolvemos n tal cual (último recurso)
-    return n;
-  } catch (e) {
-    console.error('❌ resolveNumberFromAnyId error:', e);
-    return n;
+    // Si el participant trae lid y coincide, regresamos su id real
+    if (plid && stripDevice(plid) === targetCore) return pid;
+
+    // En algunos casos el id puede venir como @lid directamente
+    if (pid && stripDevice(pid) === targetCore) return pid;
   }
+
+  // Si no se pudo resolver, devolvemos el @lid (igual sirve para comparar si todos vienen @lid)
+  return target;
 }
 
-/** Obtiene el NÚMERO REAL del remitente del mensaje (mapea @lid → jid) */
-async function getSenderNumber(sock, groupId, msg) {
-  const raw = msg?.key?.participant || msg?.key?.remoteJid || '';
-  const resolved = await resolveNumberFromAnyId(sock, groupId, raw);
-  console.log(`👤 Sender raw=${raw} → resolved=${resolved}`);
-  return resolved;
+/** Devuelve Set de admins (JIDs) */
+function getAdminSetFromMetadata(metadata) {
+  const set = new Set();
+  const parts = metadata?.participants || [];
+  for (const p of parts) {
+    if (p?.admin) {
+      const jid = normalizeId(p?.id || p?.jid);
+      if (jid) set.add(jid);
+    }
+  }
+  return set;
 }
 
-/** ¿El usuario (por número) es admin? */
-async function isNumberAdmin(sock, groupId, number) {
-  const admins = await getGroupAdminNumbers(sock, groupId);
-  const n = digitsOnly(number);
-  const ok = admins.includes(n);
-  console.log(`🧾 isNumberAdmin(${n}):`, ok);
-  return ok;
+/**
+ * isAdmin(sock, groupId, userId)
+ * - userId puede ser msg.key.participant, sender, número, @lid, etc.
+ */
+async function isAdmin(sock, groupId, userId) {
+  const meta = await getGroupMetadataSafe(sock, groupId);
+  if (!meta) return false;
+
+  const parts = meta.participants || [];
+  const adminSet = getAdminSetFromMetadata(meta);
+
+  // Resolver userId si viene @lid
+  const resolvedUser = resolveLidToJid(parts, userId);
+  return adminSet.has(normalizeId(resolvedUser));
 }
 
-/** ¿El BOT es admin del grupo? */
+/** Verifica si el bot es admin en el grupo */
 async function isBotAdmin(sock, groupId) {
-  try {
-    const botNum = digitsOnly(sock?.user?.id);
-    const admins = await getGroupAdminNumbers(sock, groupId);
-    const ok = admins.includes(botNum);
-    console.log(`🤖 BotNum=${botNum} isAdmin=${ok}`);
-    return ok;
-  } catch (e) {
-    console.error('❌ isBotAdmin error:', e);
-    return false;
-  }
+  const meta = await getGroupMetadataSafe(sock, groupId);
+  if (!meta) return false;
+
+  const parts = meta.participants || [];
+  const adminSet = getAdminSetFromMetadata(meta);
+
+  const botJid = normalizeId(sock?.user?.id);
+  const resolvedBot = resolveLidToJid(parts, botJid);
+
+  return adminSet.has(normalizeId(resolvedBot));
 }
 
-/** Check duro: valida admin del remitente del msg, mapeando lid → jid */
+/**
+ * checkAdminAndReact(sock, groupId, msg)
+ * - Devuelve true si el usuario que envió msg es admin.
+ * - Si no es admin, manda mensaje y reacciona con ❌.
+ */
 async function checkAdminAndReact(sock, groupId, msg) {
   try {
-    if (!groupId?.endsWith('@g.us')) return true;
-    const senderNum = await getSenderNumber(sock, groupId, msg);
-    const ok = await isNumberAdmin(sock, groupId, senderNum);
-    if (!ok) {
-      await sock.sendMessage(groupId, { react: { text: '⚠️', key: msg.key } });
-      await sock.sendMessage(groupId, { text: 'Solo los administradores pueden usar este comando.' });
+    const senderJidRaw = msg?.key?.participant || msg?.key?.remoteJid;
+    const ok = await isAdmin(sock, groupId, senderJidRaw);
+
+    if (ok) return true;
+
+    // Mensaje de "solo admin"
+    await sock.sendMessage(groupId, { text: config?.messages?.adminOnly || '⚠️ Solo admins.' });
+
+    // Reacción (si el cliente la soporta)
+    if (msg?.key) {
+      await sock.sendMessage(groupId, { react: { text: '❌', key: msg.key } });
     }
-    return ok;
+
+    return false;
   } catch (e) {
-    console.error('❌ checkAdminAndReact error:', e);
+    console.error('❌ checkAdminAndReact error:', e?.message || e);
     return false;
   }
 }
 
 module.exports = {
-  digitsOnly,
-  getGroupAdminNumbers,
-  resolveNumberFromAnyId,
-  getSenderNumber,
-  isNumberAdmin,
+  // compatibilidad con tus plugins
+  normalizeId,
+  isAdmin,
   isBotAdmin,
   checkAdminAndReact,
+
+  // helpers (por si los quieres usar en el futuro)
+  stripDevice,
+  getGroupMetadataSafe,
 };
