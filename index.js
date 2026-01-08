@@ -7,158 +7,202 @@ const config = require('./config.js');
 
 // --- LOGGER MEJORADO ---
 const colors = {
-    reset: '\x1b[0m',
-    bright: '\x1b[1m',
-    dim: '\x1b[2m',
-    red: '\x1b[31m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    blue: '\x1b[34m',
-    magenta: '\x1b[35m',
-    cyan: '\x1b[36m',
-    white: '\x1b[37m'
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
 };
 
 function log(message, type = 'info') {
-    const timestamp = new Date().toLocaleTimeString();
-    const types = {
-        success: `${colors.green}✅${colors.reset}`,
-        error: `${colors.red}❌${colors.reset}`,
-        warning: `${colors.yellow}⚠️${colors.reset}`,
-        info: `${colors.blue}ℹ️${colors.reset}`,
-        plugin: `${colors.magenta}🔌${colors.reset}`,
-        connection: `${colors.cyan}🔗${colors.reset}`
-    };
-    
-    console.log(`${colors.dim}[${timestamp}]${colors.reset} ${types[type]} ${message}`);
+  const timestamp = new Date().toLocaleTimeString();
+  const prefix = {
+    info: `${colors.blue}[INFO]${colors.reset}`,
+    success: `${colors.green}[OK]${colors.reset}`,
+    warning: `${colors.yellow}[WARN]${colors.reset}`,
+    error: `${colors.red}[ERR]${colors.reset}`,
+    plugin: `${colors.magenta}[PLUG]${colors.reset}`,
+  }[type] || `${colors.blue}[INFO]${colors.reset}`;
+
+  console.log(`${colors.dim}${timestamp}${colors.reset} ${prefix} ${message}`);
 }
 
-// --- BANNER DE INICIO ---
 function showBanner() {
-    console.log(`${colors.cyan}
-    ██████╗ ███████╗ █████╗ ██████╗ ███████╗██╗  ██╗██╗   ██╗██╗     ██╗     
-    ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██║   ██║██║     ██║     
-    ██║  ██║█████╗  ███████║██║  ██║███████╗█████╔╝ ██║   ██║██║     ██║     
-    ██║  ██║██╔══╝  ██╔══██║██║  ██║╚════██║██╔═██╗ ██║   ██║██║     ██║     
-    ██████╔╝███████╗██║  ██║██████╔╝███████║██║  ██╗╚██████╔╝███████╗███████╗
-    ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝
-    ${colors.reset}`);
-    console.log(`${colors.yellow}🤖 ${config.bot.name} v${config.bot.version}${colors.reset}`);
-    console.log(`${colors.dim}📍 Iniciando bot...${colors.reset}\n`);
+  console.clear();
+  console.log(`${colors.cyan}${colors.bright}`);
+  console.log('╔══════════════════════════════════╗');
+  console.log('║         DeadSkullBot 🤖          ║');
+  console.log('╚══════════════════════════════════╝');
+  console.log(`${colors.reset}`);
 }
 
-// --- CARGA DE PLUGINS ---
-let plugins = {};
+// --- PLUGINS ---
+const plugins = {};
 const pluginsPath = path.join(__dirname, 'plugins');
 
 function loadPlugins() {
-    log(`Buscando plugins en: ${pluginsPath}`, 'info');
-    
-    const pluginFiles = fs.readdirSync(pluginsPath).filter(file => file.endsWith('.js'));
-    
-    if (pluginFiles.length === 0) {
-        log('No se encontraron plugins', 'warning');
-        return;
+  log(`Buscando plugins en: ${pluginsPath}`, 'info');
+
+  if (!fs.existsSync(pluginsPath)) {
+    log('La carpeta plugins no existe. Creándola...', 'warning');
+    fs.mkdirSync(pluginsPath, { recursive: true });
+  }
+
+  const pluginFiles = fs.readdirSync(pluginsPath).filter((file) => file.endsWith('.js'));
+
+  if (pluginFiles.length === 0) {
+    log('No se encontraron plugins', 'warning');
+    return;
+  }
+
+  pluginFiles.forEach((file) => {
+    try {
+      delete require.cache[require.resolve(path.join(pluginsPath, file))];
+      const plugin = require(path.join(pluginsPath, file));
+      plugins[file] = plugin;
+      log(`Plugin cargado: ${file}`, 'plugin');
+    } catch (error) {
+      log(`Error cargando plugin ${file}: ${error.message}`, 'error');
     }
-    
-    pluginFiles.forEach(file => {
-        try {
-            delete require.cache[require.resolve(path.join(pluginsPath, file))];
-            const plugin = require(path.join(pluginsPath, file));
-            plugins[file] = plugin;
-            log(`Plugin cargado: ${file}`, 'plugin');
-        } catch (error) {
-            log(`Error cargando plugin ${file}: ${error.message}`, 'error');
-        }
-    });
-    
-    log(`Total de plugins cargados: ${Object.keys(plugins).length}`, 'success');
+  });
+
+  log(`Plugins cargados: ${Object.keys(plugins).length}`, 'success');
 }
 
-// --- BOT PRINCIPAL ---
+// --- TEXT EXTRACTOR ROBUSTO ---
+// (para que funcionen bien los plugins de descarga y grupo)
+function getTextFromMessage(msg) {
+  const m = msg?.message;
+  if (!m) return '';
+
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    m.documentMessage?.caption ||
+    m.buttonsResponseMessage?.selectedButtonId ||
+    m.listResponseMessage?.singleSelectReply?.selectedRowId ||
+    m.templateButtonReplyMessage?.selectedId ||
+    ''
+  );
+}
+
+// --- MUTE GROUPS (sin DB, en memoria) ---
+// Tu plugin grupo-mute.js usará esto.
+global.mutedGroups = global.mutedGroups || new Set();
+
+// Devuelve true si se debe ignorar el mensaje por mute
+function shouldIgnoreBecauseMuted(chat, text) {
+  if (!chat?.endsWith('@g.us')) return false;
+  if (!global.mutedGroups?.has(chat)) return false;
+
+  const prefix = (config?.bot?.prefix ?? '.').toString();
+  const t = (text || '').trim().toLowerCase();
+
+  // Permitimos comandos de desmute aunque el grupo esté muteado
+  const allow =
+    t === `${prefix}unmute` ||
+    t.startsWith(`${prefix}unmute `) ||
+    t === `${prefix}desmutear` ||
+    t.startsWith(`${prefix}desmutear `);
+
+  return !allow;
+}
+
+// --- BOT ---
 async function startBot() {
-    showBanner();
-    
-    log('Inicializando sesión de WhatsApp...', 'info');
-    const { state, saveCreds } = await useMultiFileAuthState(config.bot.sessionPath);
-    
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: config.wa.printQRInTerminal,
-        logger: Pino({ level: config.options.logLevel }),
-        ...config.wa
-    });
+  showBanner();
 
-    sock.ev.on('creds.update', saveCreds);
+  log('Inicializando sesión de WhatsApp...', 'info');
+  const { state, saveCreds } = await useMultiFileAuthState(config.bot.sessionPath);
 
-    let qrShown = false;
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: config.wa.printQRInTerminal,
+    logger: Pino({ level: config.options.logLevel }),
+    ...config.wa,
+  });
 
-        if (qr && !qrShown) {
-            log(`Generando código QR...`, 'connection');
-            console.log(`\n${colors.green}╔══════════════════════════════════╗`);
-            console.log(`║           ${colors.cyan}ESCANEA EL QR${colors.green}           ║`);
-            console.log(`╚══════════════════════════════════╝${colors.reset}\n`);
-            qrcode.generate(qr, { small: true });
-            qrShown = true;
-        }
+  sock.ev.on('creds.update', saveCreds);
 
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            qrShown = false;
-            
-            if (statusCode === DisconnectReason.loggedOut) {
-                log('Sesión cerrada. Elimina la carpeta de sesión para reconectar.', 'error');
-                process.exit(1);
-            } else {
-                log(`Conexión perdida. Reconectando en 5 segundos... (Código: ${statusCode})`, 'warning');
-                setTimeout(startBot, 5000);
-            }
-        } else if (connection === 'open') {
-            log(`✅ Conectado exitosamente a WhatsApp`, 'success');
-            log(`🤖 Bot: ${config.bot.name}`, 'info');
-            log(`⚡ Prefix: ${config.bot.prefix}`, 'info');
-            log(`🔌 Plugins: ${Object.keys(plugins).length} cargados`, 'info');
-        }
-    });
+  let qrShown = false;
 
-    // --- ESCUCHAR MENSAJES MEJORADO ---
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message) return;
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-        const sender = msg.key.remoteJid;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const isGroup = sender.endsWith('@g.us');
-        const user = msg.pushName || 'Usuario';
+    if (qr && !qrShown) {
+      log('Generando QR...', 'info');
+      console.log(`\n${colors.green}╔══════════════════════════════════╗`);
+      console.log(`║           ${colors.cyan}ESCANEA EL QR${colors.green}           ║`);
+      console.log(`╚══════════════════════════════════╝${colors.reset}\n`);
+      qrcode.generate(qr, { small: true });
+      qrShown = true;
+    }
 
-        // Log de mensajes recibidos (opcional)
-        if (config.options.debug) {
-            const chatType = isGroup ? 'GRUPO' : 'PRIVADO';
-            log(`${chatType} <- ${user}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`, 'info');
-        }
+    if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      qrShown = false;
 
-        // Ejecutar plugins
-        for (let file in plugins) {
-            try {
-                await plugins[file](sock, msg, text, sender);
-            } catch (error) {
-                log(`Error en plugin ${file}: ${error.message}`, 'error');
-            }
-        }
-    });
+      if (statusCode === DisconnectReason.loggedOut) {
+        log('Sesión cerrada. Elimina la carpeta de sesión para reconectar.', 'error');
+        process.exit(1);
+      } else {
+        log(`Conexión cerrada (status: ${statusCode}). Reintentando...`, 'warning');
+        startBot().catch((e) => log(`Error reintentando: ${e.message}`, 'error'));
+      }
+    } else if (connection === 'open') {
+      log(`✅ Conectado exitosamente a WhatsApp`, 'success');
+      log(`🤖 Bot: ${config.bot.name}`, 'info');
+      log(`⚡ Prefix: ${config.bot.prefix}`, 'info');
+      log(`🔌 Plugins: ${Object.keys(plugins).length} cargados`, 'info');
+    }
+  });
 
-    // Manejo de errores global
-    process.on('uncaughtException', (error) => {
-        log(`Error no capturado: ${error.message}`, 'error');
-    });
+  // --- ESCUCHAR MENSAJES ---
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages?.[0];
+    if (!msg?.message) return;
+    if (msg.key?.fromMe) return; // opcional: evita procesar tus propios mensajes
 
-    process.on('unhandledRejection', (reason, promise) => {
-        log(`Promise rechazada no manejada: ${reason}`, 'error');
-    });
+    const chat = msg.key.remoteJid;
+    const text = getTextFromMessage(msg);
+    const isGroup = chat.endsWith('@g.us');
+    const user = msg.pushName || 'Usuario';
+
+    if (config.options.debug) {
+      const chatType = isGroup ? 'GRUPO' : 'PRIVADO';
+      log(`${chatType} <- ${user}: ${text.substring(0, 70)}${text.length > 70 ? '...' : ''}`, 'info');
+    }
+
+    // MUTE: ignora si el grupo está muteado (excepto unmute/desmutear)
+    if (shouldIgnoreBecauseMuted(chat, text)) return;
+
+    // Ejecutar plugins
+    for (const file in plugins) {
+      try {
+        await plugins[file](sock, msg, text, chat);
+      } catch (error) {
+        log(`Error en plugin ${file}: ${error.message}`, 'error');
+      }
+    }
+  });
+
+  // Manejo de errores global
+  process.on('uncaughtException', (error) => {
+    log(`Error no capturado: ${error.message}`, 'error');
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    log(`Promise rechazada no manejada: ${reason}`, 'error');
+  });
 }
 
 // --- INICIALIZACIÓN ---
 loadPlugins();
-startBot();
+startBot().catch((e) => log(`Fallo al iniciar: ${e.message}`, 'error'));
